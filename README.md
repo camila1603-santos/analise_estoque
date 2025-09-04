@@ -1,205 +1,187 @@
-# Sistema de Análise Inteligente de Estoque Excedente
+# 📊 Análise Inteligente de Estoque Excedente
 
-## 📋 Descrição
+Sistema completo para **análise, visualização e geração de relatórios de estoque excedente**, integrando **IA Clássica** (preditiva, prescritiva e detecção de anomalias) e **IA Generativa** (resumos executivos via LLMs da OpenAI).  
 
-Sistema avançado para análise de estoque excedente com Inteligência Artificial, que gera relatórios PDF individuais por gerência com dashboards completos, KPIs, gráficos e análises preditivas.
+Este projeto faz parte de uma iniciativa de **melhoria contínua (fase Improve do DMAIC)** voltada para **otimização da gestão de estoque excedente**.
 
-## 🚀 Funcionalidades Principais
+---
 
-### 📊 Dashboard de Visão Geral
-- **Tabela de dados** formatada por gerência
-- **KPIs Principais**: Valor total, variação mensal, número de itens
-- **Evolução Temporal**: Gráfico de tendência dos últimos 12 meses
-- **Top 10 Materiais**: Ranking por valor de impacto
+## 🚀 Principais Funcionalidades
 
-### 🤖 Análises de Inteligência Artificial
+- **Upload de CSV** com dados de estoque excedente (por Gerência, Material, Quantidade, Valores Mensais).
+- **KPIs automáticos** por gerência:
+  - Valor total
+  - Quantidade total
+  - Número de materiais
+  - Valor médio por material
+  - Variação mensal
+- **Gráficos dinâmicos**:
+  - Evolução mensal
+  - Top materiais
+  - Dashboard completo
+- **Relatórios em PDF** com capa, gráficos, tabela detalhada e análises de IA.
+- **Integração com IA Clássica**:
+  - Análise preditiva (tendências de 3 meses)
+  - Detecção de anomalias (valores atípicos, crescimentos súbitos)
+  - Análise prescritiva (recomendações de ação)
+- **Integração com IA Generativa (OpenAI)**:
+  - Resumo executivo em linguagem natural
+  - Ações prioritárias sugeridas
+- **Exportação**:
+  - CSV processado
+  - PDFs individuais ou em lote (ZIP)
 
-#### 1. Análise Preditiva
-- Previsão de valores de estoque excedente para próximos meses
-- Identificação de tendências (crescimento, redução, estabilidade)
-- Cálculo de intervalos de confiança
+---
 
-#### 2. Detecção de Anomalias
-- Identificação automática de valores atípicos
-- Detecção de crescimentos súbitos
-- Classificação por severidade (alta, média, baixa)
+## 🏗️ Estrutura do Projeto
 
-#### 3. Análise Prescritiva
-- Recomendações específicas de ações
-- Priorização por impacto estimado
-- Sugestões de remanejamento e otimização
+```
+├── analysis.py          # KPIs, evolução, top materiais, tabelas e análises completas por gerência
+├── charts.py            # Gráficos (KPIs, evolução mensal, top materiais, dashboards)
+├── main_app.py          # Interface Streamlit (upload, visualização, IA, relatórios)
+├── pdf.py               # Geração de relatórios PDF detalhados
+├── columns.py           # Identificação de colunas em DataFrames
+├── formatting.py        # Funções utilitárias de formatação numérica/monetária
+├── classic_ai.py        # IA Clássica: preditiva, anomalias, prescritiva, resumos
+├── generative_llm.py    # IA Generativa via OpenAI (LLM-enabled)
+└── requirements.txt     # Dependências do projeto
+```
 
-#### 4. Resumo em Linguagem Natural
-- Geração automática de insights
-- Resumo executivo personalizado
-- Interpretação clara dos dados
+---
 
-## 📁 Estrutura dos Arquivos
+## ⚙️ Instalação e Configuração
 
-### Arquivos Principais
-- `enhanced_app.py` - Interface Streamlit principal
-- `enhanced_analysis.py` - Módulo de análise de dados por gerência
-- `ai_analysis.py` - Módulo de análises de IA
-- `enhanced_charts.py` - Geração de gráficos e visualizações
-- `enhanced_pdf_generator.py` - Gerador de PDFs por gerência
+### 1. Clonar o repositório
+```bash
+git clone https://github.com/seu-usuario/estoque-excedente.git
+cd estoque-excedente
+```
 
-### Arquivos de Configuração
-- `requirements.txt` - Dependências do projeto
-- `README.md` - Documentação completa
-- `test_system.py` - Script de testes
+### 2. Criar ambiente virtual
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+.venv\Scripts\activate     # Windows
+```
 
-### Arquivos Originais (Referência)
-- `app.py` - Aplicação original
-- `core.py` - Funções básicas originais
-- `kpis.py` - KPIs originais
-- `pdf_generator.py` - Gerador PDF original
-
-## 🛠️ Instalação e Configuração
-
-### 1. Instalar Dependências
+### 3. Instalar dependências
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Executar Aplicação
+### 4. Configurar variáveis de ambiente
+Crie um arquivo `.env` na raiz com:
+
+```env
+# Ativar/desativar LLM
+USE_LLM=1
+
+# Chave da API OpenAI
+OPENAI_API_KEY=sk-xxxx
+
+# Modelo e temperatura (opcional)
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.2
+```
+
+---
+
+## ▶️ Execução
+
+Inicie a aplicação Streamlit:
+
 ```bash
-streamlit run enhanced_app.py
+streamlit run main_app.py
 ```
 
-### 3. Testar Sistema
-```bash
-python test_system.py
-```
+Abra no navegador: [http://localhost:8501](http://localhost:8501)
 
-## 📊 Formato do Arquivo CSV
+---
 
-O arquivo CSV deve conter as seguintes colunas:
+## 📂 Formato esperado do CSV
 
-| Coluna | Descrição | Obrigatória |
-|--------|-----------|-------------|
-| Gerência | Nome da gerência | ✅ |
-| Material | Identificação do material | ✅ |
-| Área | Área dentro da gerência | ✅ |
-| Quantidade | Quantidade do material | ✅ |
-| Valor Mês 01-12 | Valores mensais | ✅ |
+Colunas obrigatórias:
 
-### Exemplo de Estrutura
-```csv
-Gerência,Área,Material,Quantidade,Valor Mês 01,Valor Mês 02,Valor Mês 03
-Operações,Produção A,Material A,100,100000,95000,90000
-Logística,Armazenagem,Material B,75,75000,70000,68000
-```
+- **Gerência**
+- **Material**
+- **Quantidade**
+- **Valor Mês 01 … Valor Mês 12**
 
-## 🎯 Como Usar
+Exemplo:
 
-### 1. Upload do Arquivo
-- Acesse a aplicação Streamlit
-- Faça upload do arquivo CSV com dados de estoque
-- O sistema detectará automaticamente as gerências
+| Gerência     | Área   | Material | Quantidade | Valor Mês 01 | Valor Mês 02 | Valor Mês 03 |
+|--------------|--------|----------|------------|--------------|--------------|--------------|
+| Operações    | Norte  | MAT001   | 120        | 10000        | 12000        | 15000        |
+| Qualidade    | Sul    | MAT002   | 80         | 8000         | 7500         | 7000         |
 
-### 2. Geração de Relatórios
-- Clique em "Gerar Relatórios PDF"
-- O sistema executará todas as análises de IA
-- Será gerado um PDF individual para cada gerência
+---
 
-### 3. Download dos Resultados
-- Baixe o arquivo ZIP com todos os PDFs
-- Cada PDF contém análise completa da respectiva gerência
+## 📑 Fluxo de Uso
 
-## 📈 Conteúdo dos Relatórios PDF
+1. **Upload do CSV** via interface.
+2. **Seleção das Gerências** a analisar.
+3. **Geração automática de análises**:
+   - KPIs, gráficos, tabelas
+   - Insights de IA Clássica
+   - Resumo Executivo (IA Generativa, se habilitada)
+4. **Exportação**:
+   - CSV processado consolidado
+   - PDFs individuais ou em lote
 
-### Seção 1: Visão Geral e KPIs
-- Cartões com métricas principais
-- Gráfico de evolução mensal
-- Ranking dos top 10 materiais
+---
 
-### Seção 2: Análises de IA
-- Resumo executivo automatizado
-- Gráfico de previsões futuras
-- Detecção de anomalias
-- Recomendações de ações
+## 🔍 Visão Técnica
 
-### Seção 3: Dados Detalhados
-- Tabela completa dos dados da gerência
-- Valores formatados em moeda brasileira
+- **Pandas** para manipulação de dados.
+- **Matplotlib + Seaborn** para gráficos.
+- **Streamlit** para UI interativa.
+- **ReportLab** para PDFs.
+- **IA Clássica**:
+  - `numpy.polyfit` para tendências lineares
+  - `IsolationForest` / Z-score para anomalias
+  - Heurísticas para recomendações
+- **IA Generativa**:
+  - Integração com API da OpenAI (Chat Completions).
+  - Prompts customizados em português.
 
-## 🔧 Personalização
+---
 
-### Modificar Análises de IA
-Edite o arquivo `ai_analysis.py` para:
-- Ajustar algoritmos de previsão
-- Modificar critérios de detecção de anomalias
-- Personalizar recomendações
+## 📈 Visão de Negócios
 
-### Customizar Visualizações
-Edite o arquivo `enhanced_charts.py` para:
-- Alterar cores e estilos dos gráficos
-- Modificar layouts dos dashboards
-- Adicionar novos tipos de visualização
+O sistema permite:
 
-### Ajustar Layout do PDF
-Edite o arquivo `enhanced_pdf_generator.py` para:
-- Modificar estrutura das páginas
-- Alterar formatação de texto
-- Personalizar estilos visuais
+- **Controle proativo** do estoque excedente.
+- **Detecção precoce** de desvios e anomalias.
+- **Recomendações prescritivas** para reduzir custos.
+- **Resumos executivos** que facilitam decisões estratégicas.
+- **KPIs claros** para monitoramento contínuo.
+- **Documentação e relatórios** para auditorias e gestão.
 
-## 🧪 Testes
+---
 
-O sistema inclui testes automatizados que verificam:
-- ✅ Carregamento de dados
-- ✅ Detecção de gerências
-- ✅ Execução de análises
-- ✅ Geração de gráficos
-- ✅ Criação de PDFs
+## 🛠️ Roadmap (fase Improve – DMAIC)
 
-Execute `python test_system.py` para validar o funcionamento.
+- [x] KPIs automatizados por gerência
+- [x] Geração de gráficos e dashboards
+- [x] Relatórios PDF detalhados
+- [x] IA Clássica para insights
+- [x] IA Generativa para resumos executivos
+- [ ] Integração nativa com Power BI
+- [ ] Módulo de feedback para aprendizado contínuo
+- [ ] API REST para integração com sistemas externos
 
-## 📋 Requisitos do Sistema
+---
 
-### Python 3.11+
-### Bibliotecas Principais
-- `streamlit` - Interface web
-- `pandas` - Manipulação de dados
-- `matplotlib` - Gráficos básicos
-- `seaborn` - Visualizações estatísticas
-- `reportlab` - Geração de PDFs
-- `scikit-learn` - Algoritmos de ML
-- `statsmodels` - Análises estatísticas
+## 👨‍💻 Contribuição
 
-## 🎉 Principais Melhorias
+1. Faça um fork do repositório.
+2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`).
+3. Commit suas alterações (`git commit -m 'Adiciona nova funcionalidade'`).
+4. Faça push para a branch (`git push origin feature/nova-funcionalidade`).
+5. Abra um Pull Request.
 
-### Em relação ao sistema original:
+---
 
-1. **Análises de IA Integradas**
-   - Previsões automáticas
-   - Detecção de anomalias
-   - Recomendações inteligentes
+## 📜 Licença
 
-2. **PDFs Separados por Gerência**
-   - Relatórios individualizados
-   - Download em lote via ZIP
-   - Conteúdo específico por gerência
-
-3. **Visualizações Aprimoradas**
-   - Dashboards interativos
-   - Gráficos profissionais
-   - KPIs visuais
-
-4. **Interface Melhorada**
-   - Design moderno
-   - Feedback em tempo real
-   - Análise prévia opcional
-
-## 🆘 Suporte
-
-Para dúvidas ou problemas:
-1. Verifique se todas as dependências estão instaladas
-2. Execute o script de teste para validar o sistema
-3. Confirme que o arquivo CSV está no formato correto
-4. Verifique os logs de erro na interface Streamlit
-
-## 📝 Licença
-
-Sistema desenvolvido para análise interna de estoque excedente.
-Todos os direitos reservados.
-
+Este projeto está licenciado sob a **MIT License**.  
