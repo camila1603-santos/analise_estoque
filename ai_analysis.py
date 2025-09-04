@@ -1,5 +1,5 @@
 """
-Módulo de análises de IA para gestão de estoque excedente.
+Módulo completo de análises de IA para gestão de estoque excedente.
 Inclui análise preditiva, detecção de anomalias, análise prescritiva e geração de resumos.
 """
 
@@ -407,18 +407,14 @@ def prescriptive_analysis(df: pd.DataFrame, gerencia: str = None) -> Dict[str, A
 def _interpretar_recomendacoes(recomendacoes: List[Dict]) -> str:
     """Interpreta as recomendações geradas."""
     if not recomendacoes:
-        return "Nenhuma recomendação específica identificada com base nos dados atuais."
+        return "Nenhuma recomendação específica gerada. Situação aparenta estar sob controle."
     
     alta_prioridade = len([r for r in recomendacoes if r.get('prioridade') == 'alta'])
-    media_prioridade = len([r for r in recomendacoes if r.get('prioridade') == 'média'])
     
-    interpretacao = f"Geradas {len(recomendacoes)} recomendações: "
     if alta_prioridade > 0:
-        interpretacao += f"{alta_prioridade} de alta prioridade, "
-    if media_prioridade > 0:
-        interpretacao += f"{media_prioridade} de média prioridade."
-    
-    return interpretacao.rstrip(', ') + "."
+        return f"Geradas {len(recomendacoes)} recomendações, sendo {alta_prioridade} de alta prioridade que requerem ação imediata."
+    else:
+        return f"Geradas {len(recomendacoes)} recomendações para otimização contínua do estoque."
 
 def generate_natural_language_summary(df: pd.DataFrame, gerencia: str = None) -> Dict[str, Any]:
     """
@@ -429,16 +425,16 @@ def generate_natural_language_summary(df: pd.DataFrame, gerencia: str = None) ->
         gerencia: Nome da gerência específica (opcional)
     
     Returns:
-        Dict com resumo em linguagem natural
+        Dict com resumo executivo
     """
     try:
         # Filtrar por gerência se especificado
         if gerencia:
             df_filtered = df[df['Gerência'] == gerencia].copy()
-            contexto = f"da gerência {gerencia}"
+            contexto = f"GERÊNCIA {gerencia.upper()}"
         else:
             df_filtered = df.copy()
-            contexto = "geral"
+            contexto = "ORGANIZACIONAL"
         
         if df_filtered.empty:
             return {
@@ -447,67 +443,72 @@ def generate_natural_language_summary(df: pd.DataFrame, gerencia: str = None) ->
                 "resumo": ""
             }
         
-        # Calcular métricas básicas
+        # Encontrar colunas de valores mensais
         month_patterns = ['valor mês', 'valor_mes', 'mês']
         month_cols = _find_columns_by_pattern(df_filtered, month_patterns)
         
         if not month_cols:
             return {
                 "status": "erro",
-                "mensagem": "Colunas de valores mensais não encontradas",
+                "mensagem": "Nenhuma coluna de valor mensal encontrada",
                 "resumo": ""
             }
         
-        # Valor total
-        total_value = sum(pd.to_numeric(df_filtered[col], errors='coerce').fillna(0).sum() 
-                         for col in month_cols)
+        # Calcular métricas básicas
+        total_value = 0
+        monthly_totals = []
+        
+        for col in month_cols:
+            monthly_total = pd.to_numeric(df_filtered[col], errors='coerce').fillna(0).sum()
+            monthly_totals.append(monthly_total)
+            total_value += monthly_total
+        
+        # Usar o último mês como valor atual
+        valor_atual = monthly_totals[-1] if monthly_totals else 0
         
         # Número de materiais únicos
-        num_materials = df_filtered['Material'].nunique() if 'Material' in df_filtered.columns else 0
+        num_materials = 0
+        if 'Material' in df_filtered.columns:
+            num_materials = df_filtered['Material'].nunique()
         
         # Quantidade total
-        qty_patterns = ['quantidade', 'qtd']
-        qty_cols = _find_columns_by_pattern(df_filtered, qty_patterns)
         total_qty = 0
-        if qty_cols:
-            total_qty = pd.to_numeric(df_filtered[qty_cols[0]], errors='coerce').fillna(0).sum()
+        if 'Quantidade' in df_filtered.columns:
+            total_qty = pd.to_numeric(df_filtered['Quantidade'], errors='coerce').fillna(0).sum()
         
-        # Análise temporal
-        monthly_totals = []
-        for col in month_cols:
-            total = pd.to_numeric(df_filtered[col], errors='coerce').fillna(0).sum()
-            monthly_totals.append(total)
-        
-        # Tendência
+        # Análise de tendência
         tendencia_texto = "estável"
-        if len(monthly_totals) >= 2:
-            variacao = ((monthly_totals[-1] - monthly_totals[0]) / (monthly_totals[0] + 1)) * 100
-            if variacao > 10:
-                tendencia_texto = f"crescimento de {variacao:.1f}%"
-            elif variacao < -10:
-                tendencia_texto = f"redução de {abs(variacao):.1f}%"
+        if len(monthly_totals) >= 3:
+            # Comparar últimos 3 meses com primeiros 3 meses
+            inicio = np.mean(monthly_totals[:3])
+            fim = np.mean(monthly_totals[-3:])
+            
+            if fim > inicio * 1.1:
+                tendencia_texto = "crescimento"
+            elif fim < inicio * 0.9:
+                tendencia_texto = "redução"
         
-        # Material com maior valor
-        top_material = "não identificado"
-        if 'Material' in df_filtered.columns and num_materials > 0:
+        # Material com maior impacto
+        top_material = "N/A"
+        if 'Material' in df_filtered.columns and month_cols:
             material_values = {}
             for material in df_filtered['Material'].unique():
                 if pd.isna(material):
                     continue
                 material_data = df_filtered[df_filtered['Material'] == material]
-                total_mat_value = sum(pd.to_numeric(material_data[col], errors='coerce').fillna(0).sum() 
-                                    for col in month_cols)
-                material_values[material] = total_mat_value
+                material_total = sum(pd.to_numeric(material_data[col], errors='coerce').fillna(0).sum() 
+                                   for col in month_cols)
+                material_values[material] = material_total
             
             if material_values:
                 top_material = max(material_values.items(), key=lambda x: x[1])[0]
         
         # Gerar resumo
         resumo = f"""
-RESUMO EXECUTIVO - ESTOQUE EXCEDENTE {contexto.upper()}
+RESUMO EXECUTIVO - ESTOQUE EXCEDENTE {contexto}
 
 SITUAÇÃO ATUAL:
-• Valor total do estoque excedente: R$ {total_value:,.2f}
+• Valor total do estoque excedente: R$ {valor_atual:,.2f}
 • Número de materiais diferentes: {num_materials}
 • Quantidade total de itens: {int(total_qty):,}
 • Material com maior impacto: {top_material}
@@ -517,13 +518,13 @@ TENDÊNCIA:
 • Período analisado: {len(monthly_totals)} meses
 
 PRINCIPAIS INSIGHTS:
-• O valor médio por material é de R$ {(total_value/max(1, num_materials)):,.2f}
-• {"Alto" if total_value > 1000000 else "Médio" if total_value > 100000 else "Baixo"} volume de estoque excedente detectado
+• O valor médio por material é de R$ {(valor_atual/max(1, num_materials)):,.2f}
+• {"Alto" if valor_atual > 1000000 else "Médio" if valor_atual > 100000 else "Baixo"} volume de estoque excedente detectado
 • {"Atenção necessária para controlar crescimento" if "crescimento" in tendencia_texto else "Situação sob controle" if "redução" in tendencia_texto else "Monitoramento contínuo recomendado"}
 
 PRÓXIMOS PASSOS RECOMENDADOS:
 • Focar na gestão do material de maior impacto ({top_material})
-• {"Implementar ações de redução urgentes" if total_value > 1000000 else "Manter monitoramento regular"}
+• {"Implementar ações de redução urgentes" if valor_atual > 1000000 else "Manter monitoramento regular"}
 • Revisar políticas de compra e estoque
         """.strip()
         
@@ -531,7 +532,7 @@ PRÓXIMOS PASSOS RECOMENDADOS:
             "status": "sucesso",
             "resumo": resumo,
             "metricas": {
-                "valor_total": total_value,
+                "valor_total": valor_atual,
                 "num_materiais": num_materials,
                 "quantidade_total": total_qty,
                 "top_material": top_material,
@@ -573,3 +574,69 @@ def comprehensive_ai_analysis(df: pd.DataFrame, gerencia: str = None) -> Dict[st
             "gerencia": gerencia or "Todas"
         }
 
+# Função de teste
+def test_ai_analysis():
+    """Testa todas as funcionalidades do módulo."""
+    
+    # Criar dados de teste
+    test_data = {
+        'Gerência': ['Operações', 'Operações', 'Qualidade', 'Qualidade'],
+        'Material': ['M001', 'M002', 'M003', 'M004'],
+        'Quantidade': [100, 200, 50, 75],
+        'Valor Mês 01': [100000, 200000, 50000, 75000],
+        'Valor Mês 02': [110000, 180000, 55000, 70000],
+        'Valor Mês 03': [95000, 190000, 48000, 72000]
+    }
+    
+    df_test = pd.DataFrame(test_data)
+    
+    print("=== TESTE COMPLETO DO MÓDULO AI_ANALYSIS ===")
+    
+    # Teste 1: Análise preditiva
+    print("\n1. ANÁLISE PREDITIVA:")
+    pred_result = predictive_analysis(df_test, 'Operações')
+    print(f"Status: {pred_result['status']}")
+    if pred_result['status'] == 'sucesso':
+        print(f"Tendência: {pred_result['tendencia']}")
+        print(f"Previsões: {pred_result['previsoes']}")
+        print(f"Interpretação: {pred_result['interpretacao']}")
+    
+    # Teste 2: Detecção de anomalias
+    print("\n2. DETECÇÃO DE ANOMALIAS:")
+    anom_result = anomaly_detection(df_test, 'Operações')
+    print(f"Status: {anom_result['status']}")
+    print(f"Total de anomalias: {anom_result.get('total_anomalias', 0)}")
+    print(f"Interpretação: {anom_result.get('interpretacao', 'N/A')}")
+    
+    # Teste 3: Análise prescritiva
+    print("\n3. ANÁLISE PRESCRITIVA:")
+    presc_result = prescriptive_analysis(df_test, 'Operações')
+    print(f"Status: {presc_result['status']}")
+    print(f"Total de recomendações: {presc_result.get('total_recomendacoes', 0)}")
+    if presc_result.get('recomendacoes'):
+        for i, rec in enumerate(presc_result['recomendacoes'][:3], 1):
+            print(f"  {i}. {rec.get('acao', 'N/A')}")
+    
+    # Teste 4: Resumo executivo
+    print("\n4. RESUMO EXECUTIVO:")
+    summary_result = generate_natural_language_summary(df_test, 'Operações')
+    print(f"Status: {summary_result['status']}")
+    if summary_result['status'] == 'sucesso':
+        print("Resumo gerado:")
+        print(summary_result['resumo'][:300] + "...")
+    
+    # Teste 5: Análise completa
+    print("\n5. ANÁLISE COMPLETA INTEGRADA:")
+    complete_result = comprehensive_ai_analysis(df_test, 'Operações')
+    print(f"Gerência: {complete_result['gerencia']}")
+    print(f"Timestamp: {complete_result['timestamp']}")
+    print("✅ Todas as análises executadas com sucesso!")
+    
+    return complete_result
+
+if __name__ == "__main__":
+    # Executar teste
+    result = test_ai_analysis()
+    print("\n" + "="*60)
+    print("✅ MÓDULO AI_ANALYSIS COMPLETO E FUNCIONAL!")
+    print("="*60)

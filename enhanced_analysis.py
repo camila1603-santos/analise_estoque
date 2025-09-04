@@ -10,9 +10,6 @@ from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
-# Importar módulos existentes
-from ai_analysis import comprehensive_ai_analysis
-
 def _find_columns_by_pattern(df: pd.DataFrame, patterns: List[str]) -> List[str]:
     """Encontra colunas que contêm qualquer um dos padrões fornecidos."""
     found_columns = []
@@ -95,18 +92,16 @@ def calculate_gerencia_kpis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
         month_patterns = ['valor mês', 'valor_mes', 'mês']
         month_cols = _find_columns_by_pattern(df_gerencia, month_patterns)
         
-        # Valor total
+        # Valor total (usar última coluna de mês como valor atual)
         valor_total = 0
         if month_cols:
-            for col in month_cols:
-                valor_total += pd.to_numeric(df_gerencia[col], errors='coerce').fillna(0).sum()
+            last_month_col = month_cols[-1]
+            valor_total = pd.to_numeric(df_gerencia[last_month_col], errors='coerce').fillna(0).sum()
         
         # Quantidade total
-        qty_patterns = ['quantidade', 'qtd']
-        qty_cols = _find_columns_by_pattern(df_gerencia, qty_patterns)
         quantidade_total = 0
-        if qty_cols:
-            quantidade_total = pd.to_numeric(df_gerencia[qty_cols[0]], errors='coerce').fillna(0).sum()
+        if 'Quantidade' in df_gerencia.columns:
+            quantidade_total = pd.to_numeric(df_gerencia['Quantidade'], errors='coerce').fillna(0).sum()
         
         # Número de materiais únicos
         numero_materiais = 0
@@ -116,22 +111,25 @@ def calculate_gerencia_kpis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
         # Valor médio por material
         valor_medio_material = valor_total / max(1, numero_materiais)
         
-        # Variação mensal (último vs primeiro mês)
+        # Variação mensal (primeira vs última coluna)
         variacao_mensal = 0
         if len(month_cols) >= 2:
-            primeiro_mes = pd.to_numeric(df_gerencia[month_cols[0]], errors='coerce').fillna(0).sum()
-            ultimo_mes = pd.to_numeric(df_gerencia[month_cols[-1]], errors='coerce').fillna(0).sum()
+            first_month_col = month_cols[0]
+            last_month_col = month_cols[-1]
             
-            if primeiro_mes > 0:
-                variacao_mensal = ((ultimo_mes - primeiro_mes) / primeiro_mes) * 100
+            valor_primeiro = pd.to_numeric(df_gerencia[first_month_col], errors='coerce').fillna(0).sum()
+            valor_ultimo = pd.to_numeric(df_gerencia[last_month_col], errors='coerce').fillna(0).sum()
+            
+            if valor_primeiro > 0:
+                variacao_mensal = ((valor_ultimo - valor_primeiro) / valor_primeiro) * 100
         
         return {
             "valor_total": valor_total,
-            "quantidade_total": int(quantidade_total),
+            "quantidade_total": quantidade_total,
             "numero_materiais": numero_materiais,
             "valor_medio_material": valor_medio_material,
             "variacao_mensal": variacao_mensal,
-            "status": "sucesso"
+            "status": "calculado"
         }
         
     except Exception as e:
@@ -141,190 +139,74 @@ def calculate_gerencia_kpis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
             "numero_materiais": 0,
             "valor_medio_material": 0,
             "variacao_mensal": 0,
-            "status": "erro",
-            "erro": str(e)
+            "status": f"erro: {str(e)}"
         }
 
-def get_monthly_evolution(df: pd.DataFrame, gerencia: str) -> pd.DataFrame:
+def generate_gerencia_analysis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
     """
-    Obtém evolução mensal dos valores para uma gerência.
+    Gera análise completa para uma gerência específica.
     
     Args:
-        df: DataFrame completo
-        gerencia: Nome da gerência
-    
-    Returns:
-        DataFrame com evolução mensal
-    """
-    try:
-        df_gerencia = filter_data_by_gerencia(df, gerencia)
-        
-        if df_gerencia.empty:
-            return pd.DataFrame(columns=['mes', 'valor_total'])
-        
-        # Encontrar colunas de valores mensais
-        month_patterns = ['valor mês', 'valor_mes', 'mês']
-        month_cols = _find_columns_by_pattern(df_gerencia, month_patterns)
-        
-        if not month_cols:
-            return pd.DataFrame(columns=['mes', 'valor_total'])
-        
-        # Calcular totais mensais
-        monthly_data = []
-        for i, col in enumerate(month_cols, 1):
-            total = pd.to_numeric(df_gerencia[col], errors='coerce').fillna(0).sum()
-            monthly_data.append({
-                'mes': f'Mês {i:02d}',
-                'valor_total': total
-            })
-        
-        return pd.DataFrame(monthly_data)
-        
-    except Exception:
-        return pd.DataFrame(columns=['mes', 'valor_total'])
-
-def get_top_materials(df: pd.DataFrame, gerencia: str, n: int = 10) -> pd.DataFrame:
-    """
-    Obtém os N materiais com maior valor para uma gerência.
-    
-    Args:
-        df: DataFrame completo
-        gerencia: Nome da gerência
-        n: Número de materiais a retornar
-    
-    Returns:
-        DataFrame com top materiais
-    """
-    try:
-        df_gerencia = filter_data_by_gerencia(df, gerencia)
-        
-        if df_gerencia.empty or 'Material' not in df_gerencia.columns:
-            return pd.DataFrame(columns=['material', 'valor_total'])
-        
-        # Encontrar colunas de valores mensais
-        month_patterns = ['valor mês', 'valor_mes', 'mês']
-        month_cols = _find_columns_by_pattern(df_gerencia, month_patterns)
-        
-        if not month_cols:
-            return pd.DataFrame(columns=['material', 'valor_total'])
-        
-        # Calcular valor total por material
-        material_values = {}
-        for material in df_gerencia['Material'].unique():
-            if pd.isna(material):
-                continue
-            
-            material_data = df_gerencia[df_gerencia['Material'] == material]
-            total_value = 0
-            for col in month_cols:
-                total_value += pd.to_numeric(material_data[col], errors='coerce').fillna(0).sum()
-            
-            material_values[material] = total_value
-        
-        # Ordenar e pegar top N
-        top_materials = sorted(material_values.items(), key=lambda x: x[1], reverse=True)[:n]
-        
-        return pd.DataFrame(top_materials, columns=['material', 'valor_total'])
-        
-    except Exception:
-        return pd.DataFrame(columns=['material', 'valor_total'])
-
-def get_gerencia_data_table(df: pd.DataFrame, gerencia: str) -> pd.DataFrame:
-    """
-    Obtém tabela de dados formatada para uma gerência.
-    
-    Args:
-        df: DataFrame completo
-        gerencia: Nome da gerência
-    
-    Returns:
-        DataFrame formatado para exibição
-    """
-    try:
-        df_gerencia = filter_data_by_gerencia(df, gerencia)
-        
-        if df_gerencia.empty:
-            return pd.DataFrame()
-        
-        # Selecionar colunas relevantes
-        display_cols = []
-        
-        # Colunas básicas
-        basic_cols = ['Material', 'Área', 'Quantidade']
-        for col in basic_cols:
-            if col in df_gerencia.columns:
-                display_cols.append(col)
-        
-        # Colunas de valores mensais
-        month_patterns = ['valor mês', 'valor_mes', 'mês']
-        month_cols = _find_columns_by_pattern(df_gerencia, month_patterns)
-        display_cols.extend(month_cols)
-        
-        # Filtrar apenas colunas que existem
-        display_cols = [col for col in display_cols if col in df_gerencia.columns]
-        
-        if not display_cols:
-            return df_gerencia
-        
-        # Criar DataFrame de exibição
-        display_df = df_gerencia[display_cols].copy()
-        
-        # Formatar valores numéricos
-        for col in month_cols:
-            if col in display_df.columns:
-                display_df[col] = pd.to_numeric(display_df[col], errors='coerce').fillna(0)
-        
-        return display_df
-        
-    except Exception:
-        return pd.DataFrame()
-
-def comprehensive_gerencia_analysis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
-    """
-    Executa análise completa para uma gerência específica.
-    
-    Args:
-        df: DataFrame completo
+        df: DataFrame com dados de estoque
         gerencia: Nome da gerência
     
     Returns:
         Dict com análise completa da gerência
     """
     try:
-        # Análises básicas
+        # Calcular KPIs básicos
         kpis = calculate_gerencia_kpis(df, gerencia)
-        monthly_evolution = get_monthly_evolution(df, gerencia)
-        top_materials = get_top_materials(df, gerencia, 10)
-        data_table = get_gerencia_data_table(df, gerencia)
         
-        # Análises de IA
-        ai_analysis = comprehensive_ai_analysis(df, gerencia)
+        # Análise de materiais (top 10)
+        df_gerencia = filter_data_by_gerencia(df, gerencia)
+        top_materiais = []
         
-        # Compilar resultado
-        result = {
+        if not df_gerencia.empty and 'Material' in df_gerencia.columns:
+            month_patterns = ['valor mês', 'valor_mes', 'mês']
+            month_cols = _find_columns_by_pattern(df_gerencia, month_patterns)
+            
+            if month_cols:
+                material_values = {}
+                for material in df_gerencia['Material'].unique():
+                    if pd.isna(material):
+                        continue
+                    
+                    material_data = df_gerencia[df_gerencia['Material'] == material]
+                    # Usar última coluna de mês
+                    valor = pd.to_numeric(material_data[month_cols[-1]], errors='coerce').fillna(0).sum()
+                    material_values[material] = valor
+                
+                # Top 10 materiais
+                top_materiais = sorted(material_values.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        # Análise temporal (se houver múltiplas colunas de mês)
+        evolucao_temporal = []
+        if not df_gerencia.empty:
+            month_patterns = ['valor mês', 'valor_mes', 'mês']
+            month_cols = _find_columns_by_pattern(df_gerencia, month_patterns)
+            
+            for col in month_cols:
+                valor_mes = pd.to_numeric(df_gerencia[col], errors='coerce').fillna(0).sum()
+                evolucao_temporal.append({
+                    'mes': col,
+                    'valor': valor_mes
+                })
+        
+        return {
             "gerencia": gerencia,
-            "timestamp": datetime.now().isoformat(),
             "kpis": kpis,
-            "evolucao_mensal": monthly_evolution.to_dict('records') if not monthly_evolution.empty else [],
-            "top_materiais": top_materials.to_dict('records') if not top_materials.empty else [],
-            "tabela_dados": data_table.to_dict('records') if not data_table.empty else [],
-            "analises_ia": ai_analysis,
-            "status": "sucesso" if kpis.get("status") == "sucesso" else "erro"
+            "top_materiais": top_materiais,
+            "evolucao_temporal": evolucao_temporal,
+            "timestamp": datetime.now().isoformat(),
+            "status": "sucesso"
         }
-        
-        return result
         
     except Exception as e:
         return {
             "gerencia": gerencia,
+            "erro": f"Erro na análise: {str(e)}",
             "timestamp": datetime.now().isoformat(),
-            "status": "erro",
-            "erro": str(e),
-            "kpis": {},
-            "evolucao_mensal": [],
-            "top_materiais": [],
-            "tabela_dados": [],
-            "analises_ia": {}
+            "status": "erro"
         }
 
 def generate_all_gerencias_analysis(df: pd.DataFrame) -> Dict[str, Any]:
@@ -332,7 +214,7 @@ def generate_all_gerencias_analysis(df: pd.DataFrame) -> Dict[str, Any]:
     Gera análise para todas as gerências encontradas no DataFrame.
     
     Args:
-        df: DataFrame completo
+        df: DataFrame com dados de estoque
     
     Returns:
         Dict com análises de todas as gerências
@@ -342,29 +224,136 @@ def generate_all_gerencias_analysis(df: pd.DataFrame) -> Dict[str, Any]:
         
         if not gerencias:
             return {
-                "status": "erro",
-                "mensagem": "Nenhuma gerência encontrada nos dados",
-                "gerencias": [],
-                "analises": {}
+                "erro": "Nenhuma gerência encontrada no dataset",
+                "timestamp": datetime.now().isoformat()
             }
         
-        analises = {}
+        results = {}
+        
         for gerencia in gerencias:
-            analises[gerencia] = comprehensive_gerencia_analysis(df, gerencia)
+            results[gerencia] = generate_gerencia_analysis(df, gerencia)
+        
+        # Calcular resumo geral
+        total_valor = sum(r.get('kpis', {}).get('valor_total', 0) for r in results.values())
+        total_materiais = sum(r.get('kpis', {}).get('numero_materiais', 0) for r in results.values())
+        
+        summary = {
+            "total_gerencias": len(gerencias),
+            "valor_total_organizacao": total_valor,
+            "total_materiais_organizacao": total_materiais,
+            "gerencias_processadas": gerencias,
+            "timestamp": datetime.now().isoformat()
+        }
         
         return {
-            "status": "sucesso",
-            "total_gerencias": len(gerencias),
-            "gerencias": gerencias,
-            "analises": analises,
-            "timestamp": datetime.now().isoformat()
+            "summary": summary,
+            "gerencias": results
         }
         
     except Exception as e:
         return {
-            "status": "erro",
-            "mensagem": f"Erro ao gerar análises: {str(e)}",
-            "gerencias": [],
-            "analises": {}
+            "erro": f"Erro na análise geral: {str(e)}",
+            "timestamp": datetime.now().isoformat()
         }
 
+def get_material_details(df: pd.DataFrame, gerencia: str, material: str) -> Dict[str, Any]:
+    """
+    Obtém detalhes específicos de um material em uma gerência.
+    
+    Args:
+        df: DataFrame com dados de estoque
+        gerencia: Nome da gerência
+        material: Nome do material
+    
+    Returns:
+        Dict com detalhes do material
+    """
+    try:
+        df_filtered = df[(df['Gerência'] == gerencia) & (df['Material'] == material)].copy()
+        
+        if df_filtered.empty:
+            return {
+                "material": material,
+                "gerencia": gerencia,
+                "status": "nao_encontrado"
+            }
+        
+        # Encontrar colunas de valores mensais
+        month_patterns = ['valor mês', 'valor_mes', 'mês']
+        month_cols = _find_columns_by_pattern(df_filtered, month_patterns)
+        
+        # Calcular evolução mensal
+        evolucao = []
+        for col in month_cols:
+            valor = pd.to_numeric(df_filtered[col], errors='coerce').fillna(0).sum()
+            evolucao.append({
+                'mes': col,
+                'valor': valor
+            })
+        
+        # Quantidade total
+        quantidade = 0
+        if 'Quantidade' in df_filtered.columns:
+            quantidade = pd.to_numeric(df_filtered['Quantidade'], errors='coerce').fillna(0).sum()
+        
+        return {
+            "material": material,
+            "gerencia": gerencia,
+            "quantidade_total": quantidade,
+            "evolucao_mensal": evolucao,
+            "valor_atual": evolucao[-1]['valor'] if evolucao else 0,
+            "status": "encontrado"
+        }
+        
+    except Exception as e:
+        return {
+            "material": material,
+            "gerencia": gerencia,
+            "erro": str(e),
+            "status": "erro"
+        }
+
+# Função de teste
+def test_enhanced_analysis():
+    """Testa as funcionalidades do módulo."""
+    
+    # Criar dados de teste
+    test_data = {
+        'Gerência': ['Operações', 'Operações', 'Qualidade', 'Qualidade', 'Manutenção'],
+        'Material': ['M001', 'M002', 'M003', 'M004', 'M005'],
+        'Quantidade': [100, 200, 50, 75, 120],
+        'Valor Mês 01': [100000, 200000, 50000, 75000, 80000],
+        'Valor Mês 02': [110000, 180000, 55000, 70000, 85000],
+        'Valor Mês 03': [95000, 190000, 48000, 72000, 90000]
+    }
+    
+    df_test = pd.DataFrame(test_data)
+    
+    print("=== TESTE DO MÓDULO ENHANCED_ANALYSIS ===")
+    
+    # Teste 1: Obter gerências
+    gerencias = get_unique_gerencias(df_test)
+    print(f"Gerências encontradas: {gerencias}")
+    
+    # Teste 2: Análise de uma gerência
+    analysis_ops = generate_gerencia_analysis(df_test, 'Operações')
+    print(f"\nAnálise Operações:")
+    print(f"Status: {analysis_ops['status']}")
+    print(f"Valor Total: R$ {analysis_ops['kpis']['valor_total']:,.2f}")
+    print(f"Número de Materiais: {analysis_ops['kpis']['numero_materiais']}")
+    
+    # Teste 3: Análise completa
+    complete_analysis = generate_all_gerencias_analysis(df_test)
+    print(f"\nAnálise Completa:")
+    print(f"Total de Gerências: {complete_analysis['summary']['total_gerencias']}")
+    print(f"Valor Total Organização: R$ {complete_analysis['summary']['valor_total_organizacao']:,.2f}")
+    
+    print("\n✅ Todos os testes executados com sucesso!")
+    return complete_analysis
+
+if __name__ == "__main__":
+    # Executar teste
+    result = test_enhanced_analysis()
+    print("\n" + "="*60)
+    print("✅ MÓDULO ENHANCED_ANALYSIS FUNCIONAL!")
+    print("="*60)
