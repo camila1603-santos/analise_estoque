@@ -4,9 +4,17 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional, List
 
+
 # Cliente oficial OpenAI (pip install openai)
 # Doc Chat Completions: https://platform.openai.com/docs/api-reference/chat
-from openai import OpenAI
+# Importa cliente OpenAI de forma segura.
+# Caso a biblioteca 'openai' não esteja instalada, a variável ``OpenAI``
+# permanecerá ``None`` e as funções que dependem do cliente deverão lidar
+# com essa situação graciosamente.
+try:
+    from openai import OpenAI  # type: ignore
+except Exception:
+    OpenAI = None  # type: ignore
 
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 # temperature baixa p/ resumo executivo mais estável
@@ -99,9 +107,15 @@ def generate_executive_summary_llm(payload: Dict[str, Any]) -> Dict[str, Any]:
     Gera texto executivo com LLM. Retorna {status, resumo, modelo, usage?}
     Se LLM estiver desabilitado/sem chave, retorna {"status":"skip"}.
     """
+    # Se LLM desabilitado ou sem chave, retorna status de skip
     if not llm_enabled():
         return {"status": "skip", "mensagem": "LLM desabilitado ou sem OPENAI_API_KEY."}
 
+    # Verifica se a biblioteca openai está disponível
+    if OpenAI is None:
+        return {"status": "erro", "mensagem": "Biblioteca openai não instalada."}
+
+    # Cria cliente e monta prompt
     client = OpenAI()  # usa OPENAI_API_KEY do ambiente
     messages = _build_summary_prompt(payload)
 

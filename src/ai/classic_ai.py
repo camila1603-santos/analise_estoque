@@ -15,7 +15,21 @@ import pandas as pd
 import warnings
 
 import os
-from ai.generative_llm import llm_enabled, generate_executive_summary_llm
+# Tenta importar funções do módulo 'ai.generative_llm'. Caso o pacote 'ai'
+# não exista, faz fallback para importar do módulo local 'generative_llm'.
+try:
+    from generative_llm import llm_enabled, generate_executive_summary_llm  # type: ignore
+except ImportError:
+    from ai.generative_llm import llm_enabled, generate_executive_summary_llm  # type: ignore
+
+# Importa utilitários para detecção dinâmica de colunas
+from utils.columns import (
+    get_col_gerencia,
+    get_col_material,
+    get_col_quantidade,
+    get_month_value_columns,
+    get_month_quantity_columns,
+)
 
 from utils.formatting import safe_format_currency, safe_format_number
 
@@ -49,10 +63,20 @@ MONTH_RX = re.compile(r"(?:valor\s*m[eê]s|m[eê]s)\s*(\d{1,2})", re.IGNORECASE)
 
 
 def _month_columns_sorted(df: pd.DataFrame) -> List[str]:
+    """Encontra e ordena colunas mensais de valor.
+
+    Primeiro utiliza ``get_month_value_columns`` do módulo ``columns`` para
+    localizar colunas de valor mensais nos formatos suportados (ex. ``Valor Mês 01``
+    ou ``Jan_Valor``). Se nenhuma coluna for encontrada, aplica a
+    lógica anterior baseada em regex para manter compatibilidade com formatos
+    desconhecidos.
     """
-    Encontra e ordena colunas mensais pelo número do mês.
-    Fallback: qualquer coluna contendo 'mês'/'mes' caso regex não encontre números.
-    """
+    # Tenta a detecção robusta
+    cols = get_month_value_columns(df)
+    if cols:
+        return cols
+
+    # Caso não encontre, usa a regex local para padrões antigos
     found: List[Tuple[int, str]] = []
     for col in df.columns:
         m = MONTH_RX.search(str(col))
@@ -61,31 +85,39 @@ def _month_columns_sorted(df: pd.DataFrame) -> List[str]:
                 found.append((int(m.group(1)), col))
             except Exception:
                 pass
-
     if found:
         return [col for _, col in sorted(found, key=lambda x: x[0])]
 
-    # fallback simples (mantém ordem original)
+    # Fallback simples: qualquer coluna contendo 'mês' ou 'mes'
     return [c for c in df.columns if "mês" in str(c).lower() or "mes" in str(c).lower()]
 
 
 def _filter_by_gerencia(df: pd.DataFrame, gerencia: str | None) -> pd.DataFrame:
+    """Filtra o DataFrame por gerência utilizando detecção dinâmica.
+
+    Remove linhas que começam com 'total' (case-insensitive). Se a coluna de
+    gerência não existir, retorna o DataFrame inteiro quando ``gerencia`` é
+    ``None`` ou vazio quando uma gerência foi especificada.
+
+    Args:
+        df: DataFrame a ser filtrado.
+        gerencia: Nome da gerência ou ``None`` para retornar todas.
+
+    Returns:
+        DataFrame filtrado.
     """
-    Filtra por gerência; remove linhas do tipo 'Total ...'.
-    Se gerência for None, retorna cópia do df sem 'Total ...'.
-    Se a coluna 'Gerência' não existir e gerência for especificada, retorna vazio.
-    """
+    col_g = get_col_gerencia(df)
     if gerencia is None:
         out = df.copy()
-        if "Gerência" in out.columns:
-            out = out[~out["Gerência"].astype(str).str.lower().str.startswith("total")]
+        if col_g:
+            out = out[~out[col_g].astype(str).str.lower().str.startswith("total")]
         return out
 
-    if "Gerência" not in df.columns:
+    if not col_g:
         return pd.DataFrame()
 
-    out = df[df["Gerência"].astype(str) == str(gerencia)].copy()
-    out = out[~out["Gerência"].astype(str).str.lower().str.startswith("total")]
+    out = df[df[col_g].astype(str) == str(gerencia)].copy()
+    out = out[~out[col_g].astype(str).str.lower().str.startswith("total")]
     return out
 
 
@@ -227,10 +259,11 @@ def anomaly_detection(df: pd.DataFrame, gerencia: str | None = None) -> Dict[str
 
         anomalias: List[Dict[str, Any]] = []
 
-        # Por material
-        if "Material" in df_filtered.columns:
-            for material in df_filtered["Material"].dropna().unique():
-                mdf = df_filtered[df_filtered["Material"] == material]
+        # Por material (usa detecção dinâmica da coluna de material)
+        col_m = get_col_material(df_filtered)
+        if col_m:
+            for material in df_filtered[col_m].dropna().unique():
+                mdf = df_filtered[df_filtered[col_m] == material]
                 serie = np.array(
                     [pd.to_numeric(mdf[c], errors="coerce").fillna(0).sum() for c in month_cols],
                     dtype=float,
@@ -317,11 +350,12 @@ def prescriptive_analysis(df: pd.DataFrame, gerencia: str | None = None) -> Dict
         month_cols = _month_columns_sorted(df_filtered)
         recomendacoes: List[Dict[str, Any]] = []
 
-        # Top materiais por valor
-        if "Material" in df_filtered.columns and month_cols:
+        # Top materiais por valor (usa detecção dinâmica da coluna de material)
+        col_m = get_col_material(df_filtered)
+        if col_m and month_cols:
             material_values: Dict[str, float] = {}
-            for material in df_filtered["Material"].dropna().unique():
-                mdf = df_filtered[df_filtered["Material"] == material]
+            for material in df_filtered[col_m].dropna().unique():
+                mdf = df_filtered[df_filtered[col_m] == material]
                 total = 0.0
                 for c in month_cols:
                     total += float(pd.to_numeric(mdf[c], errors="coerce").fillna(0).sum())
@@ -435,8 +469,11 @@ def generate_natural_language_summary(df: pd.DataFrame, gerencia: str | None = N
         # Métricas base
         monthly_totals = [float(pd.to_numeric(df_filtered[c], errors="coerce").fillna(0).sum()) for c in month_cols]
         valor_atual = monthly_totals[-1] if monthly_totals else 0.0
-        num_materials = int(df_filtered["Material"].nunique()) if "Material" in df_filtered.columns else 0
-        total_qty = int(pd.to_numeric(df_filtered["Quantidade"], errors="coerce").fillna(0).sum()) if "Quantidade" in df_filtered.columns else 0
+        # Número de materiais e quantidade total com detecção dinâmica
+        col_m = get_col_material(df_filtered)
+        col_q = get_col_quantidade(df_filtered)
+        num_materials = int(df_filtered[col_m].nunique()) if col_m else 0
+        total_qty = int(pd.to_numeric(df_filtered[col_q], errors="coerce").fillna(0).sum()) if col_q else 0
 
         tendencia_texto = "estável"
         if len(monthly_totals) >= 3:
@@ -447,12 +484,13 @@ def generate_natural_language_summary(df: pd.DataFrame, gerencia: str | None = N
             elif np.mean(ult3) < np.mean(ant) * 0.9:
                 tendencia_texto = "redução"
 
-        # Top material por soma
+        # Top material por soma (detecção dinâmica)
         top_material = "N/A"
-        if "Material" in df_filtered.columns and month_cols:
+        col_m = get_col_material(df_filtered)
+        if col_m and month_cols:
             material_values: Dict[str, float] = {}
-            for material in df_filtered["Material"].dropna().unique():
-                mdf = df_filtered[df_filtered["Material"] == material]
+            for material in df_filtered[col_m].dropna().unique():
+                mdf = df_filtered[df_filtered[col_m] == material]
                 total = sum(float(pd.to_numeric(mdf[c], errors="coerce").fillna(0).sum()) for c in month_cols)
                 material_values[str(material)] = total
             if material_values:
