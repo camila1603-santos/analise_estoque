@@ -19,18 +19,44 @@ import streamlit as st
 # --- bootstrap de imports: garante que a pasta do arquivo (src) está no sys.path
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
+# Tenta achar o .env subindo diretórios a partir deste arquivo
+load_dotenv(find_dotenv(usecwd=True), override=True)
 
-_THIS_DIR = Path(__file__).resolve().parent
-if str(_THIS_DIR) not in sys.path:
-    sys.path.insert(0, str(_THIS_DIR))
-
+load_dotenv()
+# Tenta importar dos pacotes 'ai.generative_llm' e 'ai.classic_ai'.
+# Caso esses módulos não existam, faz fallback para importar dos arquivos
+# locais 'generative_llm.py' e 'classic_ai.py'. Isso garante que o
+# aplicativo continue funcionando mesmo sem pacotes instalados.
+try:
+    from ai.generative_llm import *  # type: ignore
+    from ai.classic_ai import *  # type: ignore
+except ImportError:
+    from generative_llm import *  # type: ignore
+    from classic_ai import *  # type: ignore
 from utils.formatting import safe_format_currency, safe_format_number
 from charts import generate_all_charts_for_gerencia
 from pdf import generate_pdf_for_gerencia
 from analysis import generate_all_gerencias_analysis, get_unique_gerencias
 
-load_dotenv(dotenv_path=_THIS_DIR.parent / ".env", override=False)
+# Importa utilitários de colunas para detecção dinâmica
+from utils.columns import (
+    get_col_gerencia,
+    get_col_material,
+    get_month_value_columns,
+    get_col_quantidade,
+)
+
+
+# Lê as variáveis de ambiente
+api_key = os.getenv("OPENAI_API_KEY")
+model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+temperature = float(os.getenv("OPENAI_TEMPERATURE", 0.2))
+
+# --- bootstrap de imports: garante que a pasta do arquivo (src) está no sys.path
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.append(str(BASE_DIR))
 
 # -------------------------------------------------------------------
 # Configuração da página
@@ -55,22 +81,49 @@ st.markdown("""
 # Mock (apenas se precisar rodar sem módulos ou sem dados)
 # -------------------------------------------------------------------
 def generate_mock_analysis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
+    """Gera uma análise fictícia para fallback em caso de erro.
+
+    Este mock utiliza as funções de detecção dinâmica para localizar as
+    colunas principais (gerência, material e quantidade), de modo a evitar
+    dependência de nomes específicos. Caso alguma coluna não exista,
+    utiliza valores aleatórios para simular os KPIs.
+    """
     import numpy as np
     from datetime import datetime as _dt
 
-    df_g = df[df['Gerência'] == gerencia] if 'Gerência' in df.columns else df.copy()
+    # Filtra DataFrame pela gerência, se possível
+    col_g = get_col_gerencia(df)
+    if col_g:
+        df_g = df[df[col_g].astype(str) == str(gerencia)]
+    else:
+        df_g = df.copy()
+
+    # Valor total fictício
     valor_total = float(np.random.uniform(100_000, 2_000_000))
-    numero_materiais = int(df_g['Material'].nunique()) if 'Material' in df_g.columns else int(np.random.randint(10, 50))
-    quantidade_total = int(df_g['Quantidade'].sum()) if 'Quantidade' in df_g.columns else int(np.random.randint(500, 2000))
+
+    # Número de materiais baseado na coluna detectada, ou valor aleatório
+    col_m = get_col_material(df_g)
+    if col_m:
+        numero_materiais = int(df_g[col_m].nunique())
+    else:
+        numero_materiais = int(np.random.randint(10, 50))
+
+    # Quantidade total baseada na coluna consolidada, ou valor aleatório
+    col_q = get_col_quantidade(df_g)
+    if col_q:
+        quantidade_total = int(pd.to_numeric(df_g[col_q], errors="coerce").fillna(0).sum())
+    else:
+        quantidade_total = int(np.random.randint(500, 2000))
+
     variacao_mensal = float(np.random.uniform(-25, 25))
 
     # top_materiais como lista de tuplas (material, valor)
     top_materiais: List[tuple] = []
-    if 'Material' in df_g.columns:
-        for material in df_g['Material'].dropna().unique()[:10]:
-            top_materiais.append((str(material), float(np.random.uniform(10_000, max(10_000, valor_total/5)))))
+    if col_m:
+        for material in df_g[col_m].dropna().unique()[:10]:
+            top_materiais.append((str(material), float(np.random.uniform(10_000, max(10_000, valor_total / 5)))))
 
-    # evolução_mensal: [{"mes":"01","valor":...}, ...]
+    # evolução_mensal fictícia para 6 períodos
     evolucao_mensal = []
     for m in range(1, 7):
         evolucao_mensal.append({"mes": f"{m:02d}", "valor": float(valor_total * (1 + np.random.uniform(-0.3, 0.3)))})
@@ -89,6 +142,7 @@ def generate_mock_analysis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
         "evolucao_mensal": evolucao_mensal,
         "tabela_dados": [],
         "analises_ia": {},
+        "metricas_colunas": {},
         "timestamp": _dt.now().isoformat(),
         "status": "sucesso",
     }
@@ -161,6 +215,19 @@ def display_gerencia_analysis(analysis_data: Dict[str, Any]) -> None:
     for ins in insights:
         st.markdown(f'<div class="ai-insight">{ins}</div>', unsafe_allow_html=True)
 
+    # --- Resumo Executivo (IA) vindo do backend (classic_ai → generative_llm) ---
+    ai_data = analysis_data.get("analises_ia", {}) or {}
+    resumo_ia = ai_data.get("resumo_executivo", {})
+
+    if isinstance(resumo_ia, dict):
+        status_ia = resumo_ia.get("status")
+        if status_ia == "sucesso" and resumo_ia.get("resumo"):
+            st.markdown("### 🧠 Resumo Executivo (IA)")
+            st.write(resumo_ia["resumo"])
+        elif status_ia == "skip":
+            st.caption("IA generativa desativada ou sem chave (usando fallback determinístico).")
+        elif resumo_ia.get("mensagem"):
+            st.info(f"IA: {resumo_ia['mensagem']}")
 
 # -------------------------------------------------------------------
 # App
@@ -174,12 +241,16 @@ def main():
         st.header("ℹ️ Como usar")
         st.info("1) Faça upload do CSV • 2) Selecione as gerências • 3) Gere análises e PDFs")
         st.header("📋 Formato do CSV")
-        st.markdown("**Colunas obrigatórias:** Gerência • Material • Quantidade • Valor Mês 01..12")
+        st.markdown(
+            "**Colunas obrigatórias:** Gerência/Gerencia • Material • "
+            "Valores mensais (ex.: `Valor Mês 01..12` ou `Jan_Valor .. Dez_Valor`)")
         st.header("🧠 IA Generativa")
         use_llm_ui = st.toggle("Ativar LLM (OpenAI)", value=os.getenv("USE_LLM","0") in ("1","true","yes","on"))
         # sincroniza com o processo atual (não persiste fora da sessão)
         os.environ["USE_LLM"] = "1" if use_llm_ui else "0"
-        st.caption("Requer OPENAI_API_KEY definido no ambiente.")
+        # Status do LLM (checa OPENAI_API_KEY + USE_LLM)
+        st.caption(f"LLM: {'ON' if llm_enabled() else 'OFF'} • Modelo: {os.getenv('OPENAI_MODEL','gpt-4o-mini')}")
+
 
     uploaded_file = st.file_uploader(
         "📁 Faça o upload do arquivo CSV",
@@ -204,12 +275,24 @@ def main():
         with c1: st.metric("📊 Registros", len(df))
         with c2: st.metric("📋 Colunas", len(df.columns))
         with c3:
-            if "Gerência" in df.columns:
-                st.metric("🏢 Gerências", df["Gerência"].nunique())
+            # Usa detecção dinâmica para contar gerências
+            col_g = get_col_gerencia(df)
+            if col_g:
+                st.metric("🏢 Gerências", df[col_g].nunique())
 
-    # Validação mínima
-    if "Gerência" not in df.columns:
-        st.error("❌ Coluna obrigatória 'Gerência' não encontrada.")
+    # Validação mínima (detecção flexível)
+    col_g = get_col_gerencia(df)
+    col_m = get_col_material(df)
+    month_vals = get_month_value_columns(df)
+
+    if not col_g:
+        st.error("❌ Coluna de Gerência/Gerencia não encontrada.")
+        st.stop()
+    if not col_m:
+        st.error("❌ Coluna de Material não encontrada.")
+        st.stop()
+    if not month_vals:
+        st.error("❌ Colunas de valor mensal não encontradas (use 'Valor Mês 01..12' ou 'Jan_Valor..Dez_Valor').")
         st.stop()
 
     # Gerências
@@ -276,7 +359,28 @@ def main():
         st.markdown("---")
         st.header("📊 Análises Detalhadas por Gerência")
         for g, data in results.items():
+            # Exibe KPIs, gráficos, insights e resumo (função helper)
             display_gerencia_analysis(data)
+
+            # Exibe estatísticas de colunas numéricas adicionais, se existirem
+            extra_stats = data.get("metricas_colunas", {}) or {}
+            if extra_stats:
+                with st.expander("📊 Estatísticas por Coluna (Total e Média)", expanded=False):
+                    rows: List[Dict[str, Any]] = []
+                    for col_name, stats in extra_stats.items():
+                        total = stats.get("total", 0.0)
+                        media = stats.get("media", 0.0)
+                        # Formatação condicional para colunas que parecem valores monetários
+                        if "valor" in str(col_name).lower():
+                            total_fmt = safe_format_currency(total)
+                            media_fmt = safe_format_currency(media)
+                        else:
+                            total_fmt = safe_format_number(total)
+                            media_fmt = safe_format_number(media)
+                        rows.append({"Coluna": col_name, "Total": total_fmt, "Média": media_fmt})
+                    df_stats = pd.DataFrame(rows)
+                    st.dataframe(df_stats, use_container_width=True)
+
             st.markdown("---")
 
         # Downloads

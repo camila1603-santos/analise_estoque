@@ -9,68 +9,88 @@ Análise unificada de estoque excedente por gerência:
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np  # (pode ser útil em futuras expansões; ok manter)
 import pandas as pd
 
-# IA clássica (mantenha esse caminho conforme sua estrutura)
-from ai.classic_ai import comprehensive_ai_analysis
 
-# Regex para capturar o número do mês em nomes como "Valor Mês 01", "valor mes 2", etc.
-MONTH_RX = re.compile(r"(?:valor\s*m[eê]s|m[eê]s)\s*(\d{1,2})", re.IGNORECASE)
+# IA clássica (mantenha caminho conforme sua estrutura)
+# Tenta importar a partir do pacote 'ai.classic_ai'. Caso não exista,
+# faz fallback para importar do módulo local 'classic_ai'. Essa abordagem
+# evita erros de importação quando o projeto não está estruturado como pacote.
+try:
+    from ai.classic_ai import comprehensive_ai_analysis  # type: ignore
+except ImportError:
+    from classic_ai import comprehensive_ai_analysis  # type: ignore
+
+# Utilitários para identificação dinâmica de colunas
+from utils.columns import (
+    get_col_gerencia,
+    get_col_area,
+    get_col_material,
+    get_col_quantidade,
+    get_month_value_columns,
+    get_month_quantity_columns,
+    PT_INDEX,
+    PT_MONTHS,
+    MONTH_RX,
+)
 
 
 # ---------------------------------------------------------------------
 # Helpers internos
 # ---------------------------------------------------------------------
-def _month_columns_sorted(df: pd.DataFrame) -> List[str]:
-    """
-    Encontra e ordena colunas mensais pelo número do mês.
-    Fallback: qualquer coluna contendo 'mês'/'mes' caso regex não encontre números.
-    """
-    found: List[Tuple[int, str]] = []
-    for col in df.columns:
-        m = MONTH_RX.search(str(col))
-        if m:
-            try:
-                found.append((int(m.group(1)), col))
-            except Exception:
-                pass
 
-    if found:
-        return [col for _, col in sorted(found, key=lambda x: x[0])]
-
-    # Fallback mais simples (mantém ordem original das colunas no DataFrame)
-    return [c for c in df.columns if "mês" in str(c).lower() or "mes" in str(c).lower()]
+# A ordenação e detecção de colunas mensais são delegadas ao módulo
+# ``columns.py``, que oferece funções robustas para encontrar colunas de
+# valores e quantidades por mês. Assim, não há necessidade de manter
+# uma função local `_month_columns_sorted` aqui.
 
 
 def get_unique_gerencias(df: pd.DataFrame) -> List[str]:
+    """Retorna a lista de gerências distintas, excluindo linhas agregadas.
+
+    Esta função utiliza ``get_col_gerencia`` para localizar a coluna que
+    representa a gerência. Caso não exista, retorna lista vazia. Linhas cujo
+    valor da gerência comece com "total" (case-insensitive) são ignoradas.
+
+    Args:
+        df: DataFrame analisado.
+
+    Returns:
+        Lista de nomes de gerências ordenada.
     """
-    Retorna a lista de gerências (exclui linhas agregadas do tipo 'Total ...').
-    """
-    if "Gerência" not in df.columns:
+    col_g = get_col_gerencia(df)
+    if not col_g:
         return []
-    vals = (
-        df["Gerência"]
-        .dropna()
-        .map(str)
-        .tolist()
-    )
+    vals = df[col_g].dropna().map(str).tolist()
+    # Remove valores que parecem ser totais agregados
     vals = [g for g in set(vals) if not g.lower().startswith("total")]
     return sorted(vals)
 
 
 def _filter(df: pd.DataFrame, gerencia: str) -> pd.DataFrame:
+    """Filtra o DataFrame por uma gerência específica, excluindo totais.
+
+    A coluna de gerência é determinada por ``get_col_gerencia``. Caso não
+    exista, retorna um DataFrame vazio.
+
+    Args:
+        df: DataFrame de origem.
+        gerencia: Nome da gerência a filtrar.
+
+    Returns:
+        Subconjunto do DataFrame com apenas os registros da gerência, sem
+        linhas cujo valor de gerência comece com "total".
     """
-    Filtra o DataFrame por gerência, removendo linhas 'Total ...'.
-    """
-    if "Gerência" not in df.columns:
+    col_g = get_col_gerencia(df)
+    if not col_g:
         return pd.DataFrame()
-    out = df[df["Gerência"].astype(str) == str(gerencia)].copy()
-    out = out[~out["Gerência"].astype(str).str.lower().str.startswith("total")]
+    out = df[df[col_g].astype(str) == str(gerencia)].copy()
+    # Remove linhas com 'Total' (acesso case-insensitive)
+    out = out[~out[col_g].astype(str).str.lower().str.startswith("total")]
     return out
 
 
@@ -78,13 +98,23 @@ def _filter(df: pd.DataFrame, gerencia: str) -> pd.DataFrame:
 # Cálculos por gerência
 # ---------------------------------------------------------------------
 def calculate_gerencia_kpis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
-    """
-    KPIs principais para a gerência:
-      - valor_total (último mês)
-      - quantidade_total
-      - numero_materiais
-      - valor_medio_material
-      - variacao_mensal (% entre 1º e último mês)
+    """Calcula os principais KPIs para uma gerência específica.
+
+    KPIs calculados:
+      - ``valor_total``: soma do último mês disponível nas colunas de valor;
+      - ``quantidade_total``: soma da coluna de quantidade consolidada ou
+        soma das colunas de quantidade mensais quando a coluna consolidada não existe;
+      - ``numero_materiais``: número de materiais distintos;
+      - ``valor_medio_material``: ``valor_total`` dividido pelo número de materiais;
+      - ``variacao_mensal``: variação percentual entre o primeiro e o último mês.
+
+    Args:
+        df: DataFrame de origem.
+        gerencia: Gerência para a qual calcular os KPIs.
+
+    Returns:
+        Dicionário com os KPIs calculados e um campo ``status`` indicando
+        "sucesso" ou "sem_dados" quando a gerência não possui registros.
     """
     gdf = _filter(df, gerencia)
     if gdf.empty:
@@ -97,7 +127,8 @@ def calculate_gerencia_kpis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
             "status": "sem_dados",
         }
 
-    month_cols = _month_columns_sorted(gdf)
+    # Colunas de valor por mês
+    month_cols = get_month_value_columns(gdf)
 
     # Valor total = soma no último mês disponível
     valor_total = 0.0
@@ -105,18 +136,28 @@ def calculate_gerencia_kpis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
         last_col = month_cols[-1]
         valor_total = pd.to_numeric(gdf[last_col], errors="coerce").fillna(0).sum()
 
-    # Quantidade total
-    quantidade_total = pd.to_numeric(gdf.get("Quantidade", 0), errors="coerce").fillna(0).sum()
+    # Quantidade total (consolidada ou somatório de quantidades mensais)
+    col_q = get_col_quantidade(gdf)
+    if col_q:
+        quantidade_total = pd.to_numeric(gdf[col_q], errors="coerce").fillna(0).sum()
+    else:
+        quantidade_total = 0
+        q_month_cols = get_month_quantity_columns(gdf)
+        for qcol in q_month_cols:
+            quantidade_total += pd.to_numeric(gdf[qcol], errors="coerce").fillna(0).sum()
 
-    # Nº materiais e valor médio
-    numero_materiais = gdf["Material"].nunique() if "Material" in gdf.columns else 0
+    # Número de materiais distintos
+    col_m = get_col_material(gdf)
+    numero_materiais = gdf[col_m].nunique() if col_m else 0
+
+    # Valor médio por material
     valor_medio_material = float(valor_total) / max(1, int(numero_materiais))
 
-    # Variação mensal: primeiro vs último mês
+    # Variação mensal: compara primeiro e último mês de valor
     variacao_mensal = 0.0
     if len(month_cols) >= 2:
         primeiro = pd.to_numeric(gdf[month_cols[0]], errors="coerce").fillna(0).sum()
-        ultimo = pd.to_numeric(gdf[month_cols[-1]], errors="coerce").fillna(0).sum()
+        ultimo   = pd.to_numeric(gdf[month_cols[-1]], errors="coerce").fillna(0).sum()
         if primeiro > 0:
             variacao_mensal = ((ultimo - primeiro) / primeiro) * 100.0
 
@@ -131,37 +172,78 @@ def calculate_gerencia_kpis(df: pd.DataFrame, gerencia: str) -> Dict[str, Any]:
 
 
 def get_monthly_evolution(df: pd.DataFrame, gerencia: str) -> List[Dict[str, Any]]:
-    """
-    Lista de pontos (mês, valor) somados na gerência:
-      [{"mes": "01", "valor": 12345.0}, ...]
+    """Gera a evolução mensal de valor para uma gerência.
+
+    Para cada coluna de valor mensal detectada pelo utilitário
+    ``get_month_value_columns``, soma os valores da coluna e gera um dicionário
+    com chave ``mes`` (mês em formato ``00``) e ``valor`` (soma das linhas).
+
+    Args:
+        df: DataFrame de origem.
+        gerencia: Gerência para a qual calcular a evolução.
+
+    Returns:
+        Lista de dicionários no formato ``{"mes": "01", "valor": 123.45}``.
     """
     gdf = _filter(df, gerencia)
     if gdf.empty:
         return []
 
+    month_cols = get_month_value_columns(gdf)
     out: List[Dict[str, Any]] = []
-    for col in _month_columns_sorted(gdf):
+    for idx, col in enumerate(month_cols):
         total = pd.to_numeric(gdf[col], errors="coerce").fillna(0).sum()
-        m = MONTH_RX.search(col)
-        label = m.group(1).zfill(2) if m else str(col)
+        # Determina o rótulo do mês (01..12) a partir do nome da coluna
+        label: str
+        m = MONTH_RX.search(str(col))
+        if m:
+            # Padrão "Valor Mês 01" → captura número
+            label = m.group(1).zfill(2)
+        else:
+            # Verifica prefixo de mês (Jan, Fev, ...) e usa seu índice
+            temp_label: Optional[str] = None
+            col_lower = str(col).strip().lower()
+            for month in PT_MONTHS:
+                pref = month.lower()
+                if col_lower.startswith(pref + "_") or col_lower.startswith(pref + " "):
+                    temp_label = str(PT_INDEX[month]).zfill(2)
+                    break
+            if temp_label is not None:
+                label = temp_label
+            else:
+                # Fallback: usa a posição da coluna na lista (1-indexed)
+                label = str(idx + 1).zfill(2)
         out.append({"mes": label, "valor": float(total)})
     return out
 
 
 def get_top_materials(df: pd.DataFrame, gerencia: str, n: int = 10) -> List[Tuple[str, float]]:
-    """
-    Top N materiais por valor somado ao longo das colunas mensais (ordenado desc).
-    Retorna lista de tuplas (material, valor_total) — compatível com charts.py.
+    """Retorna os materiais com maiores valores totais em uma gerência.
+
+    Os valores são calculados somando todas as colunas de valor mensal para
+    cada material. Se a coluna de material não existir ou o DataFrame da
+    gerência estiver vazio, retorna lista vazia.
+
+    Args:
+        df: DataFrame de origem.
+        gerencia: Gerência para a qual extrair os materiais.
+        n: Número máximo de materiais a retornar.
+
+    Returns:
+        Lista de tuplas ``(material, valor_total)`` ordenada de forma
+        decrescente pelo valor.
     """
     gdf = _filter(df, gerencia)
-    if gdf.empty or "Material" not in gdf.columns:
+    col_m = get_col_material(gdf)
+    if gdf.empty or not col_m:
         return []
 
-    month_cols = _month_columns_sorted(gdf)
+    month_cols = get_month_value_columns(gdf)
     totals: Dict[str, float] = {}
 
-    for mat in gdf["Material"].dropna().map(str).unique():
-        mat_df = gdf[gdf["Material"].astype(str) == mat]
+    # Itera sobre materiais únicos, convertendo para string para uniformizar
+    for mat in gdf[col_m].dropna().map(str).unique():
+        mat_df = gdf[gdf[col_m].astype(str) == mat]
         v = 0.0
         for c in month_cols:
             v += pd.to_numeric(mat_df[c], errors="coerce").fillna(0).sum()
@@ -172,24 +254,96 @@ def get_top_materials(df: pd.DataFrame, gerencia: str, n: int = 10) -> List[Tupl
 
 
 def get_gerencia_data_table(df: pd.DataFrame, gerencia: str) -> List[Dict[str, Any]]:
-    """
-    Tabela detalhada para a gerência (Material, Área, Quantidade, meses...).
-    Valores numéricos convertidos para float/int.
+    """Retorna uma tabela detalhada para uma gerência.
+
+    A tabela inclui as colunas de material, área, quantidade consolidada (se
+    existir), as colunas de quantidades mensais e de valores mensais. Todos
+    os valores numéricos são convertidos para tipos numéricos (int/float),
+    enquanto colunas categóricas permanecem como string.
+
+    Args:
+        df: DataFrame de origem.
+        gerencia: Gerência a ser detalhada.
+
+    Returns:
+        Lista de dicionários representando cada linha da tabela.
     """
     gdf = _filter(df, gerencia)
     if gdf.empty:
         return []
 
-    base_cols = [c for c in ["Material", "Área", "Quantidade"] if c in gdf.columns]
-    month_cols = _month_columns_sorted(gdf)
-    cols = base_cols + month_cols
+    # Identifica colunas principais
+    col_m = get_col_material(gdf)
+    col_a = get_col_area(gdf)
+    col_q = get_col_quantidade(gdf)
+    value_cols = get_month_value_columns(gdf)
+    quantity_month_cols = get_month_quantity_columns(gdf)
 
+    base_cols: List[str] = []
+    for c in [col_m, col_a, col_q]:
+        if c and c in gdf.columns:
+            base_cols.append(c)
+    # Inclui colunas de quantidade mensais (se existirem) e de valores mensais
+    cols = base_cols + quantity_month_cols + value_cols
+
+    # Seleciona e converte tipos
     table = gdf[cols].copy()
     for c in cols:
-        if c not in ("Material", "Área"):
-            table[c] = pd.to_numeric(table[c], errors="coerce").fillna(0)
+        # Apenas converte para numérico colunas que não são categóricas
+        if c not in (col_m, col_a) and c in table.columns:
+            try:
+                table[c] = pd.to_numeric(table[c], errors="coerce").fillna(0)
+            except Exception:
+                # Quando pd.to_numeric não aceita o array diretamente (por exemplo,
+                # DataFrame em vez de Series), converte cada elemento individualmente.
+                table[c] = table[c].apply(lambda x: pd.to_numeric(x, errors="coerce")).fillna(0)
 
     return table.to_dict("records")
+
+
+# ---------------------------------------------------------------------
+# Estatísticas genéricas para todas as colunas numéricas
+# ---------------------------------------------------------------------
+def get_numeric_column_stats(df: pd.DataFrame, gerencia: str) -> Dict[str, Dict[str, float]]:
+    """Calcula estatísticas básicas para cada coluna numérica de uma gerência.
+
+    Identifica dinamicamente colunas com valores numéricos (incluindo
+    quantidades e valores mensais, bem como outras colunas numéricas que
+    possam existir). Para cada coluna encontrada, calcula o total (soma)
+    e a média.
+
+    Args:
+        df: DataFrame de origem.
+        gerencia: Gerência a ser filtrada.
+
+    Returns:
+        Um dicionário mapeando o nome de cada coluna numérica para outro
+        dicionário com as chaves ``total`` e ``media``.
+    """
+    gdf = _filter(df, gerencia)
+    if gdf.empty:
+        return {}
+
+    numeric_stats: Dict[str, Dict[str, float]] = {}
+    for col in gdf.columns:
+        try:
+            # Exclui colunas claramente categóricas (material, área, gerência)
+            # e tenta converter para numérico para identificar se há valores.
+            if col == get_col_material(gdf) or col == get_col_area(gdf) or col == get_col_gerencia(gdf):
+                continue
+            series = pd.to_numeric(gdf[col], errors="coerce")
+            # Considere coluna numérica se houver pelo menos um valor numérico
+            if series.notna().any():
+                total = float(series.fillna(0).sum())
+                media = float(series.fillna(0).mean())
+                numeric_stats[str(col)] = {
+                    "total": total,
+                    "media": media,
+                }
+        except Exception:
+            # Se a conversão falhar, ignora a coluna
+            continue
+    return numeric_stats
 
 
 # ---------------------------------------------------------------------
@@ -205,6 +359,9 @@ def comprehensive_gerencia_analysis(df: pd.DataFrame, gerencia: str) -> Dict[str
     tabela = get_gerencia_data_table(df, gerencia)
     ai = comprehensive_ai_analysis(df, gerencia)
 
+    # Estatísticas adicionais para todas as colunas numéricas
+    numeric_stats = get_numeric_column_stats(df, gerencia)
+
     return {
         "gerencia": gerencia,
         "timestamp": datetime.now().isoformat(),
@@ -213,6 +370,7 @@ def comprehensive_gerencia_analysis(df: pd.DataFrame, gerencia: str) -> Dict[str
         "top_materiais": top,          # List[Tuple[str, float]] — compatível com charts.py
         "tabela_dados": tabela,
         "analises_ia": ai,
+        "metricas_colunas": numeric_stats,
         "status": "sucesso" if kpis.get("status") == "sucesso" else "erro",
     }
 
