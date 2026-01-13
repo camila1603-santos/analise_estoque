@@ -1,50 +1,60 @@
 # 📊 Análise Inteligente de Estoque Excedente
 
-Sistema completo para **análise, visualização e geração de relatórios de estoque excedente**, integrando **IA Clássica** (preditiva, prescritiva e detecção de anomalias) e **IA Generativa** (resumos executivos via LLMs da OpenAI).  
+![Status do Projeto](https://img.shields.io/badge/Status-MVP-orange?style=for-the-badge)
+![Metodologia](https://img.shields.io/badge/Metodologia-Lean%20Six%20Sigma-green?style=for-the-badge)
+![Tecnologia](https://img.shields.io/badge/Tecnologia-IA%20Híbrida-blue?style=for-the-badge)
 
-Este projeto faz parte de uma iniciativa de **melhoria contínua (fase Improve do DMAIC)** voltada para **otimização da gestão de estoque excedente**.
+Sistema completo para **análise, visualização e geração de relatórios de estoque excedente**, integrando **IA Clássica** (preditiva, prescritiva e detecção de anomalias) e **IA Generativa** (resumos executivos via LLMs da OpenAI).
+
+---
+
+## 🎓 Contexto do Projeto (Lean Six Sigma)
+
+Este sistema foi desenvolvido como **Trabalho de Conclusão** para **obtenção do certificado de Green Belt em Lean Six Sigma**, aplicado a um problema real de negócio relacionado à **gestão e otimização de estoque excedente**.
+
+O projeto está inserido em uma iniciativa de **melhoria contínua**, seguindo a metodologia **DMAIC**, com foco principal na fase **Improve**, propondo uma solução tecnológica para apoiar a tomada de decisão gerencial, reduzir desperdícios e aumentar a visibilidade dos dados de estoque.
+
+> [!IMPORTANT]
+> 🔁 Trata-se de um **MVP (Minimum Viable Product)**, concebido para evoluir continuamente. Novas funcionalidades, refinamentos analíticos e integrações fazem parte do ciclo de melhoria contínua Lean.
 
 ---
 
 ## 🚀 Principais Funcionalidades
 
-- **Upload de CSV** com dados de estoque excedente (por Gerência, Material, Quantidade, Valores Mensais).
-- **KPIs automáticos** por gerência:
-  - Valor total
-  - Quantidade total
-  - Número de materiais
-  - Valor médio por material
-  - Variação mensal
-- **Gráficos dinâmicos**:
-  - Evolução mensal
-  - Top materiais
-  - Dashboard completo
-- **Relatórios em PDF** com capa, gráficos, tabela detalhada e análises de IA.
-- **Integração com IA Clássica**:
-  - Análise preditiva (tendências de 3 meses)
-  - Detecção de anomalias (valores atípicos, crescimentos súbitos)
-  - Análise prescritiva (recomendações de ação)
-- **Integração com IA Generativa (OpenAI)**:
-  - Resumo executivo em linguagem natural
-  - Ações prioritárias sugeridas
-- **Exportação**:
-  - CSV processado
-  - PDFs individuais ou em lote (ZIP)
+| Categoria | Funcionalidades |
+| :--- | :--- |
+| **Dados & KPIs** | Upload de CSV, KPIs automáticos por gerência (Valor, Qtd, Materiais, Variação Mensal). |
+| **Visualização** | Gráficos dinâmicos de evolução mensal, Top materiais e Dashboard completo. |
+| **IA Clássica** | Análise preditiva (3 meses), detecção de anomalias e recomendações prescritivas. |
+| **IA Generativa** | Resumos executivos em linguagem natural e sugestão de ações prioritárias via OpenAI. |
+| **Exportação** | Relatórios em PDF com gráficos, CSV processado e exportação em lote (ZIP). |
 
 ---
 
 ## 🏗️ Estrutura do Projeto
 
-```
-├── analysis.py          # KPIs, evolução, top materiais, tabelas e análises completas por gerência
-├── charts.py            # Gráficos (KPIs, evolução mensal, top materiais, dashboards)
-├── main_app.py          # Interface Streamlit (upload, visualização, IA, relatórios)
-├── pdf.py               # Geração de relatórios PDF detalhados
-├── columns.py           # Identificação de colunas em DataFrames
-├── formatting.py        # Funções utilitárias de formatação numérica/monetária
-├── classic_ai.py        # IA Clássica: preditiva, anomalias, prescritiva, resumos
-├── generative_llm.py    # IA Generativa via OpenAI (LLM-enabled)
-└── requirements.txt     # Dependências do projeto
+```text
+analise_estoque/
+├── src
+│   ├── ai
+│   │   ├── __init__.py
+│   │   ├── classic_ai.py
+│   │   └── generative_llm.py
+│   ├── ui\logs
+│   │   └── app.log
+│   └── utils
+│       ├── __init__.py
+│       ├── columns.py
+│       └── formatting.py
+├── .env.example
+├── analysis.py
+├── charts.py
+├── main_app.py
+├── pdf.py
+├── .gitignore
+├── README.md
+└── requirements.txt
+
 ```
 
 ---
@@ -53,33 +63,29 @@ Este projeto faz parte de uma iniciativa de **melhoria contínua (fase Improve d
 
 ### 1. Clonar o repositório
 ```bash
-git clone https://github.com/seu-usuario/estoque-excedente.git
-cd estoque-excedente
+git clone https://github.com/seu-usuario/analise_estoque.git
+cd analise_estoque
 ```
 
-### 2. Criar ambiente virtual
+### 2. Configurar Ambiente
 ```bash
+# Criar ambiente virtual
 python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-.venv\Scripts\activate     # Windows
+
+# Ativar ambiente (Windows)
+.venv\Scripts\activate     
 ```
 
-### 3. Instalar dependências
+### 3. Instalar Dependências
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configurar variáveis de ambiente
-Crie um arquivo `.env` na raiz com:
-
+### 4. Variáveis de Ambiente
+Crie um arquivo `.env` na raiz do projeto:
 ```env
-# Ativar/desativar LLM
 USE_LLM=1
-
-# Chave da API OpenAI
 OPENAI_API_KEY=sk-xxxx
-
-# Modelo e temperatura (opcional)
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_TEMPERATURE=0.2
 ```
@@ -89,77 +95,42 @@ OPENAI_TEMPERATURE=0.2
 ## ▶️ Execução
 
 Inicie a aplicação Streamlit:
-
 ```bash
 streamlit run main_app.py
 ```
-
-Abra no navegador: [http://localhost:8501](http://localhost:8501)
-
----
-
-## 📂 Formato esperado do CSV
-
-Colunas obrigatórias:
-
-- **Gerência**
-- **Material**
-- **Quantidade**
-- **Valor Mês 01 … Valor Mês 12**
-
-Exemplo:
-
-| Gerência     | Área   | Material | Quantidade | Valor Mês 01 | Valor Mês 02 | Valor Mês 03 |
-|--------------|--------|----------|------------|--------------|--------------|--------------|
-| Operações    | Norte  | MAT001   | 120        | 10000        | 12000        | 15000        |
-| Qualidade    | Sul    | MAT002   | 80         | 8000         | 7500         | 7000         |
+Acesse em seu navegador: `http://localhost:8501`
 
 ---
 
-## 📑 Fluxo de Uso
+## 📂 Formato de Dados (CSV)
 
-1. **Upload do CSV** via interface.
-2. **Seleção das Gerências** a analisar.
-3. **Geração automática de análises**:
-   - KPIs, gráficos, tabelas
-   - Insights de IA Clássica
-   - Resumo Executivo (IA Generativa, se habilitada)
-4. **Exportação**:
-   - CSV processado consolidado
-   - PDFs individuais ou em lote
+O sistema espera um arquivo CSV com as seguintes colunas obrigatórias:
 
----
-
-## 🔍 Visão Técnica
-
-- **Pandas** para manipulação de dados.
-- **Matplotlib + Seaborn** para gráficos.
-- **Streamlit** para UI interativa.
-- **ReportLab** para PDFs.
-- **IA Clássica**:
-  - `numpy.polyfit` para tendências lineares
-  - `IsolationForest` / Z-score para anomalias
-  - Heurísticas para recomendações
-- **IA Generativa**:
-  - Integração com API da OpenAI (Chat Completions).
-  - Prompts customizados em português.
+| Coluna | Descrição |
+| :--- | :--- |
+| **Gerência** | Nome do setor ou departamento responsável. |
+| **Material** | Identificação do item em estoque. |
+| **Quantidade** | Saldo atual do material. |
+| **Valor Mês XX** | Colunas de valores históricos (ex: Valor Mês 01 a Valor Mês 12). |
 
 ---
 
-## 📈 Visão de Negócios
+## 🔍 Visão Técnica & Negócios
 
-O sistema permite:
+### Stack Tecnológica
+- **Processamento:** Pandas & NumPy.
+- **Visualização:** Matplotlib, Seaborn & Streamlit.
+- **Relatórios:** ReportLab.
+- **Inteligência:** `polyfit` (Tendências), `IsolationForest` (Anomalias) e OpenAI API (LLM).
 
-- **Controle proativo** do estoque excedente.
-- **Detecção precoce** de desvios e anomalias.
-- **Recomendações prescritivas** para reduzir custos.
-- **Resumos executivos** que facilitam decisões estratégicas.
-- **KPIs claros** para monitoramento contínuo.
-- **Documentação e relatórios** para auditorias e gestão.
+### Impacto no Negócio
+- **Controle Proativo:** Gestão antecipada do excedente.
+- **Redução de Custos:** Recomendações baseadas em dados para mitigar desperdícios.
+- **Governança:** Relatórios padronizados para auditorias e tomada de decisão executiva.
 
 ---
 
-## 🛠️ Roadmap (fase Improve – DMAIC)
+## 🛠️ Roadmap (Fase Improve – DMAIC)
 
 - [x] KPIs automatizados por gerência
 - [x] Geração de gráficos e dashboards
@@ -168,20 +139,20 @@ O sistema permite:
 - [x] IA Generativa para resumos executivos
 - [ ] Integração nativa com Power BI
 - [ ] Módulo de feedback para aprendizado contínuo
-- [ ] API REST para integração com sistemas externos
+- [ ] API REST para integração externa
 
 ---
 
 ## 👨‍💻 Contribuição
 
-1. Faça um fork do repositório.
-2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`).
-3. Commit suas alterações (`git commit -m 'Adiciona nova funcionalidade'`).
-4. Faça push para a branch (`git push origin feature/nova-funcionalidade`).
-5. Abra um Pull Request.
+1. Faça um **Fork** do projeto.
+2. Crie uma **Branch** para sua feature (`git checkout -b feature/nova-funcionalidade`).
+3. Faça o **Commit** de suas alterações (`git commit -m 'Adiciona nova funcionalidade'`).
+4. Faça o **Push** para a Branch (`git push origin feature/nova-funcionalidade`).
+5. Abra um **Pull Request**.
 
 ---
 
 ## 📜 Licença
 
-Este projeto está licenciado sob a **MIT License**.  
+Este projeto está licenciado sob a **MIT License**.
